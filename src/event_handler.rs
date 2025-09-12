@@ -106,11 +106,17 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
+        // return immediately if author is a bot
+        if msg.author.bot {
+            return;
+        }
+
         let guild_id = match msg.guild_id {
             Some(s) => s,
             _ => return,
         };
 
+        // write message into database
         if let Err(e) = self
             .database
             .insert_message(
@@ -125,10 +131,6 @@ impl EventHandler for Handler {
             eprintln!("Failed to insert message into database: {}", e);
         }
 
-        if msg.author.bot {
-            return;
-        }
-
         if let Some(referenced_message) = &msg.referenced_message {
             if referenced_message.author.id == ctx.cache.current_user().id
                 && !referenced_message.embeds.is_empty()
@@ -138,6 +140,8 @@ impl EventHandler for Handler {
         }
 
         if msg.mentions_me(&ctx.http).await.unwrap_or(false) {
+            let typing = ctx.http.start_typing(msg.channel_id);
+
             let builder = match generate_markov_message(
                 guild_id,
                 msg.channel_id,
@@ -146,16 +150,20 @@ impl EventHandler for Handler {
             )
             .await
             {
-                Some(markov_message) => CreateMessage::new().content(markov_message),
+                Some(markov_message) => CreateMessage::new()
+                    .content(markov_message)
+                    .reference_message(&msg),
                 None => CreateMessage::new()
-                    .content("Please wait until this channel has over 500 messages."),
+                    .content("Please wait until this channel has over 500 messages.")
+                    .reference_message(&msg),
             };
 
             msg.channel_id
                 .send_message(&ctx.http, builder)
                 .await
                 .unwrap();
-            return;
+
+            typing.stop();
         }
     }
 
