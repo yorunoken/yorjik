@@ -36,21 +36,21 @@ pub async fn execute(
         ))
         .color(0x5865F2);
 
+    let start_button = CreateButton::new("start")
+        .style(ButtonStyle::Success)
+        .label("Start");
+
+    let cancel_buton = CreateButton::new("cancel")
+        .style(ButtonStyle::Danger)
+        .label("Cancel");
+
     let message = command
         .edit_response(
             &ctx.http,
             EditInteractionResponse::new()
                 .embed(embed)
-                .button(
-                    CreateButton::new("start")
-                        .style(ButtonStyle::Success)
-                        .label("Start"),
-                )
-                .button(
-                    CreateButton::new("cancel")
-                        .style(ButtonStyle::Danger)
-                        .label("Cancel"),
-                ),
+                .button(start_button.clone())
+                .button(cancel_buton.clone()),
         )
         .await?;
 
@@ -71,18 +71,8 @@ pub async fn execute(
                     &ctx.http,
                     EditInteractionResponse::new()
                         .embed(embed)
-                        .button(
-                            CreateButton::new("start")
-                                .style(ButtonStyle::Success)
-                                .label("Start")
-                                .disabled(true),
-                        )
-                        .button(
-                            CreateButton::new("cancel")
-                                .style(ButtonStyle::Danger)
-                                .label("Cancel")
-                                .disabled(true),
-                        ),
+                        .button(start_button.clone().disabled(true))
+                        .button(cancel_buton.clone().disabled(true)),
                 )
                 .await?;
 
@@ -109,18 +99,8 @@ pub async fn execute(
                     &ctx.http,
                     EditInteractionResponse::new()
                         .embed(embed)
-                        .button(
-                            CreateButton::new("start")
-                                .style(ButtonStyle::Success)
-                                .label("Start")
-                                .disabled(true),
-                        )
-                        .button(
-                            CreateButton::new("cancel")
-                                .style(ButtonStyle::Danger)
-                                .label("Cancel")
-                                .disabled(true),
-                        ),
+                        .button(start_button.clone().disabled(true))
+                        .button(cancel_buton.clone().disabled(true)),
                 )
                 .await?;
         }
@@ -139,23 +119,22 @@ async fn start_game(
         .title("Message Guesser")
         .description("**Game Started!**\n\nPreparing your first message...")
         .color(0x57F287);
+
+    let start_button = CreateButton::new("start")
+        .style(ButtonStyle::Success)
+        .label("Start");
+
+    let cancel_buton = CreateButton::new("cancel")
+        .style(ButtonStyle::Danger)
+        .label("Cancel");
+
     command
         .edit_response(
             &ctx.http,
             EditInteractionResponse::new()
                 .embed(embed)
-                .button(
-                    CreateButton::new("start")
-                        .style(ButtonStyle::Success)
-                        .label("Start")
-                        .disabled(true),
-                )
-                .button(
-                    CreateButton::new("cancel")
-                        .style(ButtonStyle::Danger)
-                        .label("Cancel")
-                        .disabled(true),
-                ),
+                .button(start_button.clone().disabled(true))
+                .button(cancel_buton.clone().disabled(true)),
         )
         .await?;
 
@@ -218,6 +197,14 @@ impl<'a> Game<'a> {
             0xFEE75C,
         );
 
+        let skip_buton = CreateButton::new("skip")
+            .style(ButtonStyle::Primary)
+            .label("Reveal Answer");
+
+        let end_button = CreateButton::new("end")
+            .style(ButtonStyle::Danger)
+            .label("End Game");
+
         let mut message = self
             .command
             .channel_id
@@ -225,16 +212,8 @@ impl<'a> Game<'a> {
                 &self.ctx.http,
                 CreateMessage::new()
                     .embed(embed.clone())
-                    .button(
-                        CreateButton::new("skip")
-                            .style(ButtonStyle::Primary)
-                            .label("Reveal Answer"),
-                    )
-                    .button(
-                        CreateButton::new("end")
-                            .style(ButtonStyle::Danger)
-                            .label("End Game"),
-                    ),
+                    .button(skip_buton.clone())
+                    .button(end_button.clone()),
             )
             .await?;
 
@@ -253,18 +232,8 @@ impl<'a> Game<'a> {
                                     message.edit(&self.ctx.http,
                                         serenity::all::EditMessage::new()
                                             .embed(embed.clone())
-                                            .button(
-                                                CreateButton::new("skip")
-                                                    .style(ButtonStyle::Primary)
-                                                    .label("Reveal Answer")
-                                                    .disabled(true),
-                                            )
-                                            .button(
-                                                CreateButton::new("end")
-                                                    .style(ButtonStyle::Danger)
-                                                    .label("End Game")
-                                                    .disabled(true),
-                                            )
+                                            .button(skip_buton.clone().disabled(true))
+                                            .button(end_button.clone().disabled(true))
                                     ).await?;
 
                                     self.command
@@ -280,22 +249,11 @@ impl<'a> Game<'a> {
                                     break;
                                 }
                                 "end" => {
-                                    // Update the message with disabled buttons
                                     message.edit(&self.ctx.http,
                                         serenity::all::EditMessage::new()
                                             .embed(embed.clone())
-                                            .button(
-                                                CreateButton::new("skip")
-                                                    .style(ButtonStyle::Primary)
-                                                    .label("Reveal Answer")
-                                                    .disabled(true),
-                                            )
-                                            .button(
-                                                CreateButton::new("end")
-                                                    .style(ButtonStyle::Danger)
-                                                    .label("End Game")
-                                                    .disabled(true),
-                                            )
+                                            .button(skip_buton.clone().disabled(true))
+                                            .button(end_button.clone().disabled(true))
                                     ).await?;
 
                                     interaction
@@ -318,18 +276,8 @@ impl<'a> Game<'a> {
                                 message.edit(&self.ctx.http,
                                     serenity::all::EditMessage::new()
                                         .embed(embed.clone())
-                                        .button(
-                                            CreateButton::new("skip")
-                                                .style(ButtonStyle::Primary)
-                                                .label("Reveal Answer")
-                                                .disabled(true),
-                                        )
-                                        .button(
-                                            CreateButton::new("end")
-                                                .style(ButtonStyle::Danger)
-                                                .label("End Game")
-                                                .disabled(true),
-                                        )
+                                        .button(skip_buton.clone().disabled(true))
+                                        .button(end_button.clone().disabled(true))
                                 ).await?;
                                 break;
                             }
@@ -338,18 +286,8 @@ impl<'a> Game<'a> {
                                 message.edit(&self.ctx.http,
                                     serenity::all::EditMessage::new()
                                         .embed(embed.clone())
-                                        .button(
-                                            CreateButton::new("skip")
-                                                .style(ButtonStyle::Primary)
-                                                .label("Reveal Answer")
-                                                .disabled(true),
-                                        )
-                                        .button(
-                                            CreateButton::new("end")
-                                                .style(ButtonStyle::Danger)
-                                                .label("End Game")
-                                                .disabled(true),
-                                        )
+                                        .button(skip_buton.clone().disabled(true))
+                                        .button(end_button.clone().disabled(true))
                                 ).await?;
 
                             self.end_game("**Time's Up!**\n\nNo one guessed correctly within the time limit.")
@@ -411,19 +349,13 @@ impl<'a> Game<'a> {
                 )
                 .await?;
 
-            // Correct guess
-            self.handle_message_guess(user_message.author.id.get(), true)
-                .await;
-
             return Ok(true);
         }
 
-        // Incorrect guess
-        self.handle_message_guess(user_message.author.id.get(), false)
-            .await;
-
+        // wrong guess
         return Ok(false);
     }
+
     fn matches(&self, src: &str, content: &str) -> Option<bool> {
         let difficulty = 1.0;
 
@@ -443,13 +375,9 @@ impl<'a> Game<'a> {
         guild_id: &u64,
         min_letters_amount: &u64,
     ) -> Option<(String, u64)> {
-        let prefix_list: Vec<&str> = vec![
-            "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
-        ];
-
         match self
             .database
-            .get_random_message(*guild_id, *min_letters_amount, &prefix_list)
+            .get_random_message(*guild_id, *min_letters_amount)
             .await
         {
             Ok(result) => result,
@@ -457,42 +385,6 @@ impl<'a> Game<'a> {
                 eprintln!("Failed to get random message: {}", e);
                 None
             }
-        }
-    }
-
-    async fn handle_message_guess(&self, guesser_id: u64, guessed_correctly: bool) {
-        let user_rating = match self.database.get_user_rating(guesser_id).await {
-            Ok(Some(rating)) => rating,
-            Ok(None) => {
-                let initial_rating = 0.0;
-                if let Err(e) = self
-                    .database
-                    .insert_initial_rating(guesser_id, initial_rating)
-                    .await
-                {
-                    eprintln!("Failed to insert initial rating: {}", e);
-                    return;
-                }
-                initial_rating
-            }
-            Err(e) => {
-                eprintln!("Failed to get user rating: {}", e);
-                return;
-            }
-        };
-
-        let new_rating = if guessed_correctly {
-            user_rating + 3.0
-        } else {
-            user_rating - 0.1
-        };
-
-        if let Err(e) = self
-            .database
-            .update_user_rating(guesser_id, new_rating)
-            .await
-        {
-            eprintln!("Failed to update user rating: {}", e);
         }
     }
 }
