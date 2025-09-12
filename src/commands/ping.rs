@@ -14,7 +14,7 @@ pub async fn execute(ctx: &Context, command: &CommandInteraction) -> Result<(), 
 
     let elapsed = (Instant::now() - timer_start).as_millis();
 
-    let builder = EditInteractionResponse::new().content(format!("{} ({}ms)", content, elapsed));
+    let builder = EditInteractionResponse::new().content(format!("{} ({:2}ms)", content, elapsed));
     command.edit_response(&ctx.http, builder).await?;
     Ok(())
 }
