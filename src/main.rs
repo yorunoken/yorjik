@@ -1,4 +1,4 @@
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use serenity::prelude::*;
 use std::env;
 use std::sync::Arc;

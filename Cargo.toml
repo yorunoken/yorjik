@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 serenity = { git = "https://github.com/serenity-rs/serenity", features = [
     "collector",
 ] }
