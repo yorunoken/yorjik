@@ -936,18 +936,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "markov-bot"
-version = "0.1.1"
-dependencies = [
- "dotenv",
- "futures",
- "rand",
- "serenity",
- "sqlx",
- "tokio",
-]
-
-[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2654,6 +2642,18 @@ checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
 dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "yorjik"
+version = "0.1.1"
+dependencies = [
+ "dotenv",
+ "futures",
+ "rand",
+ "serenity",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
