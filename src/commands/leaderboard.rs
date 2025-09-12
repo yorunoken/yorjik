@@ -1,6 +1,6 @@
 use serenity::all::{
     CommandInteraction, CommandOptionType, CreateCommand, CreateCommandOption, CreateEmbed,
-    EditInteractionResponse, ResolvedValue,
+    EditInteractionResponse,
 };
 use serenity::prelude::*;
 use serenity::Error;
@@ -22,29 +22,18 @@ pub async fn execute(
         _ => return Ok(()),
     };
 
-    let options = &command.data.options();
+    let options = &command.data.options;
 
     let member_id = options
         .iter()
         .find(|opt| opt.name == "user")
-        .and_then(|opt| {
-            if let ResolvedValue::User(user, _) = &opt.value {
-                Some(user.id.get())
-            } else {
-                None
-            }
-        });
+        .and_then(|opt| opt.value.as_user_id())
+        .map(|u| u.get());
 
     let excludes = options
         .iter()
         .find(|opt| opt.name == "exclude_word")
-        .and_then(|opt| {
-            if let ResolvedValue::String(s) = &opt.value {
-                Some(s.to_lowercase())
-            } else {
-                None
-            }
-        });
+        .and_then(|opt| opt.value.as_str());
 
     let excludes_array: Option<Vec<String>> = excludes.map(|v| {
         v.split(",")
@@ -56,25 +45,13 @@ pub async fn execute(
     let min_word_length = options
         .iter()
         .find(|opt| opt.name == "min_word_length")
-        .and_then(|opt| {
-            if let ResolvedValue::Integer(i) = &opt.value {
-                Some(*i as usize)
-            } else {
-                None
-            }
-        })
+        .and_then(|opt| opt.value.as_i64())
         .unwrap_or(0);
 
     let selected_word = options
         .iter()
         .find(|opt| opt.name == "word")
-        .and_then(|opt| {
-            if let ResolvedValue::String(s) = &opt.value {
-                Some(s.to_lowercase())
-            } else {
-                None
-            }
-        });
+        .and_then(|opt| opt.value.as_str());
 
     let limit = 50;
 
@@ -100,7 +77,7 @@ pub async fn execute(
             for word in content.split_whitespace() {
                 let word = word.to_lowercase();
 
-                if word.len() < min_word_length {
+                if word.len() < min_word_length as usize {
                     continue;
                 }
 
@@ -128,11 +105,11 @@ pub async fn execute(
         let mut leaderboard: Vec<(String, u64, usize)> = if let Some(selected_word) = selected_word
         {
             word_counts
-                .get(&selected_word)
+                .get(selected_word)
                 .map(|author_counts| {
                     author_counts
                         .iter()
-                        .map(|(&author_id, &count)| (selected_word.clone(), author_id, count))
+                        .map(|(&author_id, &count)| (selected_word.to_string(), author_id, count))
                         .collect()
                 })
                 .unwrap_or_default()
