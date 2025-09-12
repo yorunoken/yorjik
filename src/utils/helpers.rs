@@ -14,7 +14,7 @@ pub async fn generate_markov_message(
     custom_word: Option<&str>,
     database: Arc<Database>,
 ) -> Option<String> {
-    let blacklist_prefixes = [
+    let prefixes = [
         "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
     ];
 
@@ -22,7 +22,7 @@ pub async fn generate_markov_message(
         .get_messages_for_markov(
             guild_id.get(),
             channel_id.get(),
-            &blacklist_prefixes,
+            &prefixes,
             DATABASE_MESSAGE_FETCH_LIMIT,
         )
         .await
