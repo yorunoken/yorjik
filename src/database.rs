@@ -20,8 +20,7 @@ impl Database {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER NOT NULL,
+                message_id INTEGER PRIMARY KEY,
                 author_id INTEGER NOT NULL,
                 channel_id INTEGER NOT NULL,
                 guild_id INTEGER NOT NULL,
