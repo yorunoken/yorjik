@@ -111,7 +111,7 @@ pub async fn execute(
                     }
                 }
 
-                before_message_id = Some(messages[99].id.get());
+                before_message_id = Some(messages[messages.len() - 1].id.get());
 
                 if messages.len() < limit as usize {
                     println!("Reached end of messages. Collection complete!");
