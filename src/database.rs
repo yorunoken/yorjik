@@ -76,63 +76,37 @@ impl Database {
         prefixes: &[&str],
         limit: usize,
     ) -> Result<Vec<String>, sqlx::Error> {
-        // Use a more efficient random sampling approach
-        let count_query = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10"
-        )
-        .bind(guild_id as i64)
-        .bind(channel_id as i64)
-        .fetch_one(&self.pool)
-        .await?;
+        let prefix_conditions = prefixes
+            .iter()
+            .map(|_| "content NOT LIKE ? || '%'")
+            .collect::<Vec<_>>()
+            .join(" AND ");
 
-        if count_query < limit as i64 {
-            // If we don't have enough messages, just get all of them
-            let rows = sqlx::query(
-                "SELECT content FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10"
-            )
+        let query = format!(
+            "SELECT content FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10 AND {} LIMIT ? OFFSET ABS(RANDOM() % MAX((SELECT COUNT(*) FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10) - ?, 1))",
+            prefix_conditions
+        );
+
+        let mut query_builder = sqlx::query(&query)
+            .bind(guild_id as i64)
+            .bind(channel_id as i64);
+
+        for prefix in prefixes {
+            query_builder = query_builder.bind(*prefix);
+        }
+
+        let rows = query_builder
+            .bind(limit as i64)
             .bind(guild_id as i64)
             .bind(channel_id as i64)
+            .bind(limit as i64)
             .fetch_all(&self.pool)
             .await?;
 
-            let mut messages: Vec<String> = rows
-                .iter()
-                .map(|row| row.get::<String, _>("content"))
-                .filter(|content| !prefixes.iter().any(|&prefix| content.starts_with(prefix)))
-                .collect();
-
-            // shuffle shuffle shuffle
-            messages.shuffle(&mut rand::thread_rng());
-            return Ok(messages);
-        }
-
-        // For large datasets, use random sampling with OFFSET
-        let mut messages = Vec::with_capacity(limit);
-        let mut attempts = 0;
-
-        while messages.len() < limit && attempts < limit * 3 {
-            let offset = { rand::thread_rng().gen_range(0..count_query - 100) as i64 };
-
-            let rows = sqlx::query(
-                "SELECT content FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10 LIMIT 100 OFFSET ?"
-            )
-            .bind(guild_id as i64)
-            .bind(channel_id as i64)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await?;
-
-            for row in rows {
-                let content: String = row.get("content");
-                if !prefixes.iter().any(|&prefix| content.starts_with(prefix)) {
-                    messages.push(content);
-                    if messages.len() >= limit {
-                        break;
-                    }
-                }
-            }
-            attempts += 1;
-        }
+        let messages: Vec<String> = rows
+            .iter()
+            .map(|row| row.get::<String, _>("content"))
+            .collect();
 
         Ok(messages)
     }
@@ -160,29 +134,42 @@ impl Database {
             "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
         ];
 
+        let prefix_conditions = prefix_list
+            .iter()
+            .map(|_| "content NOT LIKE ? || '%'")
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
         let rows = if let Some(member_id) = member_id {
-            sqlx::query(
-                "SELECT content, author_id FROM messages WHERE guild_id = ? AND author_id = ?",
-            )
-            .bind(guild_id as i64)
-            .bind(member_id as i64)
-            .fetch_all(&self.pool)
-            .await?
-        } else {
-            sqlx::query("SELECT content, author_id FROM messages WHERE guild_id = ?")
+            let query = format!(
+                "SELECT content, author_id FROM messages WHERE guild_id = ? AND author_id = ? AND {}",
+                prefix_conditions
+            );
+            let mut query_builder = sqlx::query(&query)
                 .bind(guild_id as i64)
-                .fetch_all(&self.pool)
-                .await?
+                .bind(member_id as i64);
+
+            for prefix in &prefix_list {
+                query_builder = query_builder.bind(*prefix);
+            }
+
+            query_builder.fetch_all(&self.pool).await?
+        } else {
+            let query = format!(
+                "SELECT content, author_id FROM messages WHERE guild_id = ? AND {}",
+                prefix_conditions
+            );
+            let mut query_builder = sqlx::query(&query).bind(guild_id as i64);
+
+            for prefix in &prefix_list {
+                query_builder = query_builder.bind(*prefix);
+            }
+
+            query_builder.fetch_all(&self.pool).await?
         };
 
         let messages: Vec<(String, u64)> = rows
             .iter()
-            .filter(|row| {
-                let content: String = row.get("content");
-                !prefix_list
-                    .iter()
-                    .any(|&prefix| content.starts_with(prefix))
-            })
             .map(|row| {
                 (
                     row.get::<String, _>("content"),
@@ -203,67 +190,33 @@ impl Database {
             "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
         ];
 
-        let count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM messages WHERE guild_id = ? AND LENGTH(content) >= ?",
-        )
-        .bind(guild_id as i64)
-        .bind(min_letters_amount as i64)
-        .fetch_one(&self.pool)
-        .await?;
+        let prefix_conditions = prefix_list
+            .iter()
+            .map(|_| "content NOT LIKE ? || '%'")
+            .collect::<Vec<_>>()
+            .join(" AND ");
 
-        if count == 0 {
-            return Ok(None);
+        let query = format!(
+            "SELECT content, author_id FROM messages WHERE guild_id = ? AND LENGTH(content) >= ? AND {} ORDER BY RANDOM() LIMIT 1",
+            prefix_conditions
+        );
+
+        let mut query_builder = sqlx::query(&query)
+            .bind(guild_id as i64)
+            .bind(min_letters_amount as i64);
+
+        for prefix in &prefix_list {
+            query_builder = query_builder.bind(*prefix);
         }
 
-        let offset = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0..count)
-        };
+        let row = query_builder.fetch_optional(&self.pool).await?;
 
-        let rows = sqlx::query(
-            "SELECT content, author_id FROM messages WHERE guild_id = ? AND LENGTH(content) >= ? LIMIT 20 OFFSET ?"
-        )
-        .bind(guild_id as i64)
-        .bind(min_letters_amount as i64)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await?;
-
-        // Filter out blacklisted prefixes
-        for row in rows {
-            let content: String = row.get("content");
-            if !prefix_list
-                .iter()
-                .any(|&prefix| content.starts_with(prefix))
-            {
-                return Ok(Some((content, row.get::<i64, _>("author_id") as u64)));
-            }
+        match row {
+            Some(row) => Ok(Some((
+                row.get::<String, _>("content"),
+                row.get::<i64, _>("author_id") as u64,
+            ))),
+            None => Ok(None),
         }
-
-        // If no suitable message found in this batch, try once more
-        let offset = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0..count.max(20) - 20)
-        };
-        let rows = sqlx::query(
-            "SELECT content, author_id FROM messages WHERE guild_id = ? AND LENGTH(content) >= ? LIMIT 20 OFFSET ?"
-        )
-        .bind(guild_id as i64)
-        .bind(min_letters_amount as i64)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await?;
-
-        for row in rows {
-            let content: String = row.get("content");
-            if !prefix_list
-                .iter()
-                .any(|&prefix| content.starts_with(prefix))
-            {
-                return Ok(Some((content, row.get::<i64, _>("author_id") as u64)));
-            }
-        }
-
-        Ok(None)
     }
 }
