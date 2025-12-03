@@ -1,4 +1,3 @@
-use rand::{seq::SliceRandom, Rng};
 use sqlx::{sqlite::SqlitePool, Row, SqlitePool as Pool};
 
 pub struct Database {
