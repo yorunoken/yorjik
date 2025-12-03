@@ -110,7 +110,7 @@ impl EventHandler for Handler {
             tokio::spawn(async move {
                 loop {
                     match reqwest::get(&url).await {
-                        Ok(_) => (),
+                        Ok(_) => println!("Pinged Kuma"),
                         Err(e) => eprintln!("Failed to ping Kuma: {}", e),
                     }
 
