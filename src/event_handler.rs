@@ -1,10 +1,12 @@
 use rand::rngs::OsRng;
-use serenity::all::CreateCommand;
+use std::env;
 use std::sync::Arc;
+
 use tokio::time::Duration;
 
 use rand::Rng;
 
+use serenity::all::CreateCommand;
 use serenity::builder::GetMessages;
 use serenity::model::{application::Interaction, channel::Message, gateway::Ready};
 use serenity::prelude::*;
@@ -103,6 +105,19 @@ impl EventHandler for Handler {
                 tokio::time::sleep(Duration::from_secs(range)).await;
             }
         });
+
+        if let Ok(url) = env::var("UPTIME_KUMA_URL") {
+            tokio::spawn(async move {
+                loop {
+                    match reqwest::get(&url).await {
+                        Ok(_) => (),
+                        Err(e) => eprintln!("Failed to ping Kuma: {}", e),
+                    }
+
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
+        }
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
