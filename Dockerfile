@@ -1,7 +1,10 @@
-# builder 
 FROM rust:1-bookworm AS builder
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y pkg-config libssl-dev
+
+# prepare caching
 
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
@@ -10,10 +13,12 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs
 
 RUN cargo build --release
 
-RUN rm src/*.rs
-COPY ./src ./src
+# build the than
 
+RUN rm src/*.rs
 RUN rm ./target/release/deps/yorjik*
+
+COPY ./src ./src
 RUN cargo build --release
 
 # runner
