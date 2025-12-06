@@ -43,7 +43,24 @@ impl Database {
         .execute(pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS channel_stats (
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (guild_id, channel_id)
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
         // Create indexes for performance
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_channel_stats_ranking ON channel_stats (guild_id, count DESC)")
+            .execute(pool)
+            .await?;
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_word_counts_ranking ON word_counts (guild_id, count DESC)")
             .execute(pool)
@@ -80,6 +97,19 @@ impl Database {
         .bind(channel_id as i64)
         .bind(guild_id as i64)
         .bind(content)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO channel_stats (guild_id, channel_id, count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(guild_id, channel_id) 
+            DO UPDATE SET count = count + 1
+            "#,
+        )
+        .bind(guild_id as i64)
+        .bind(channel_id as i64)
         .execute(&self.pool)
         .await?;
 
@@ -162,7 +192,7 @@ impl Database {
 
     pub async fn get_most_popular_channel(&self, guild_id: u64) -> Result<u64, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT channel_id FROM messages WHERE guild_id = ? GROUP BY channel_id ORDER BY COUNT(*) DESC LIMIT 1"
+            "SELECT channel_id FROM channel_stats WHERE guild_id = ? ORDER BY count DESC LIMIT 1",
         )
         .bind(guild_id as i64)
         .fetch_optional(&self.pool)
