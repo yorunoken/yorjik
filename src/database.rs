@@ -161,14 +161,36 @@ impl Database {
             .collect::<Vec<_>>()
             .join(" AND ");
 
+        let bounds: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT MIN(message_id), MAX(message_id) FROM messages WHERE guild_id = ? AND channel_id = ?"
+        )
+        .bind(guild_id as i64)
+        .bind(channel_id as i64)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (min_id, max_id) = match bounds {
+            Some((min, max)) if min > 0 && max > 0 => (min, max),
+            _ => return Ok(Vec::new()),
+        };
+
         let query = format!(
-            "SELECT content FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10 AND {} LIMIT ? OFFSET ABS(RANDOM() % MAX((SELECT COUNT(*) FROM messages WHERE guild_id = ? AND channel_id = ? AND LENGTH(content) > 10) - ?, 1))",
+            "SELECT content FROM messages 
+             WHERE guild_id = ? 
+             AND channel_id = ? 
+             AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
+             AND LENGTH(content) > 10 
+             AND {} 
+             LIMIT ?",
             prefix_conditions
         );
 
         let mut query_builder = sqlx::query(&query)
             .bind(guild_id as i64)
-            .bind(channel_id as i64);
+            .bind(channel_id as i64)
+            .bind(max_id)
+            .bind(min_id)
+            .bind(min_id);
 
         for prefix in prefixes {
             query_builder = query_builder.bind(*prefix);
@@ -275,13 +297,33 @@ impl Database {
             .collect::<Vec<_>>()
             .join(" AND ");
 
+        let bounds: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT MIN(message_id), MAX(message_id) FROM messages WHERE guild_id = ?",
+        )
+        .bind(guild_id as i64)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (min_id, max_id) = match bounds {
+            Some((min, max)) if min > 0 && max > 0 => (min, max),
+            _ => return Ok(None),
+        };
+
         let query = format!(
-            "SELECT content, author_id FROM messages WHERE guild_id = ? AND LENGTH(content) >= ? AND {} ORDER BY RANDOM() LIMIT 1",
+            "SELECT content, author_id FROM messages 
+             WHERE guild_id = ? 
+             AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
+             AND LENGTH(content) >= ? 
+             AND {} 
+             LIMIT 1",
             prefix_conditions
         );
 
         let mut query_builder = sqlx::query(&query)
             .bind(guild_id as i64)
+            .bind(max_id)
+            .bind(min_id)
+            .bind(min_id)
             .bind(min_letters_amount as i64);
 
         for prefix in &prefix_list {
