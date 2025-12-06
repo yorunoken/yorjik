@@ -69,8 +69,14 @@ pub async fn execute(
         Ok(data) => data,
         Err(e) => {
             eprintln!("Failed to fetch leaderboard data: {}", e);
-            EditInteractionResponse::new()
-                .content("An error occurred while fetching the leaderboard.");
+            command
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content("An error occurred while fetching the leaderboard."),
+                )
+                .await?;
+
             return Ok(());
         }
     };
