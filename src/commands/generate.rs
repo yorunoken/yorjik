@@ -28,12 +28,12 @@ pub async fn execute(
         .find(|opt| opt.name == "word")
         .and_then(|opt| opt.value.as_str());
 
-    let builder = match generate_markov_message(guild_id, command.channel_id, word, database).await
-    {
-        Some(markov_message) => EditInteractionResponse::new().content(markov_message),
-        None => EditInteractionResponse::new()
-            .content("Please wait until this channel has over 500 messages."),
-    };
+    let builder =
+        match generate_markov_message(&ctx, guild_id, command.channel_id, word, database).await {
+            Some(markov_message) => EditInteractionResponse::new().content(markov_message),
+            None => EditInteractionResponse::new()
+                .content("Please wait until this channel has over 500 messages."),
+        };
 
     command.edit_response(&ctx.http, builder).await?;
     Ok(())

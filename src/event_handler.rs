@@ -1,10 +1,11 @@
-use rand::rngs::OsRng;
 use std::env;
 use std::sync::Arc;
 
 use tokio::time::Duration;
 
+use rand::rngs::StdRng;
 use rand::Rng;
+use rand::SeedableRng;
 
 use serenity::all::CreateCommand;
 use serenity::builder::GetMessages;
@@ -38,7 +39,7 @@ impl EventHandler for Handler {
         }
 
         // Random message generator on loop
-        let mut rng = OsRng;
+        let mut rng = StdRng::from_entropy();
         let database_clone = self.database.clone();
         tokio::spawn(async move {
             loop {
@@ -77,6 +78,7 @@ impl EventHandler for Handler {
 
                                 // Only send a message if builder is not None
                                 if let Some(markov_message) = generate_markov_message(
+                                    &ctx,
                                     guild_id,
                                     channel.id,
                                     None,
@@ -158,6 +160,7 @@ impl EventHandler for Handler {
             let typing = ctx.http.start_typing(msg.channel_id);
 
             let builder = match generate_markov_message(
+                &ctx,
                 guild_id,
                 msg.channel_id,
                 None,

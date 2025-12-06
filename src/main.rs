@@ -1,12 +1,19 @@
 use dotenvy::dotenv;
 use serenity::prelude::*;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 mod commands;
 mod database;
 mod event_handler;
 mod utils;
+
+pub struct MarkovChainGlobal;
+impl TypeMapKey for MarkovChainGlobal {
+    type Value = Arc<RwLock<HashMap<u64, utils::markov_chain::Chain>>>;
+}
 
 #[tokio::main]
 async fn main() {
@@ -27,6 +34,8 @@ async fn main() {
     let commands = commands::commands_vecs();
     let registered = commands::register_vecs();
 
+    let markov_cache = Arc::new(RwLock::new(HashMap::new()));
+
     // build the Discord client, and pass in our event handler
     let mut client = Client::builder(discord_token, intents)
         .event_handler(event_handler::Handler {
@@ -34,6 +43,7 @@ async fn main() {
             registered,
             database: database.clone(),
         })
+        .type_map_insert::<MarkovChainGlobal>(markov_cache)
         .await
         .expect("Error creating client.");
 
