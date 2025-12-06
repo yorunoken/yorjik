@@ -6,9 +6,9 @@ use serenity::prelude::*;
 use serenity::Error;
 use std::sync::Arc;
 
-use std::collections::HashMap;
-
 use crate::database::Database;
+
+const MAX_DESCRIPTION_LENGTH: usize = 4000;
 
 pub async fn execute(
     ctx: &Context,
@@ -46,7 +46,7 @@ pub async fn execute(
         .iter()
         .find(|opt| opt.name == "min_word_length")
         .and_then(|opt| opt.value.as_i64())
-        .unwrap_or(0);
+        .unwrap_or(3);
 
     let selected_word = options
         .iter()
@@ -55,113 +55,60 @@ pub async fn execute(
 
     let limit = 50;
 
-    let prefix_list: Vec<&str> = vec![
-        "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "%", "^", "*", ",",
-    ];
-
-    let embed = {
-        let sentences = match database
-            .get_messages_for_leaderboard(guild_id.get(), member_id)
-            .await
-        {
-            Ok(sentences) => sentences,
-            Err(e) => {
-                eprintln!("Failed to fetch messages for leaderboard: {}", e);
-                return Ok(());
-            }
-        };
-
-        let mut word_counts: HashMap<String, HashMap<u64, usize>> = HashMap::new();
-
-        for (content, author_id) in sentences {
-            for word in content.split_whitespace() {
-                let word = word.to_lowercase();
-
-                if word.len() < min_word_length as usize {
-                    continue;
-                }
-
-                if let Some(selected_word) = &selected_word {
-                    if *selected_word != word {
-                        continue;
-                    }
-                }
-
-                if let Some(excludes) = &excludes_array {
-                    if excludes.contains(&word) {
-                        continue;
-                    }
-                }
-
-                if prefix_list.iter().any(|&prefix| word.starts_with(prefix)) {
-                    continue;
-                }
-
-                let author_counts = word_counts.entry(word).or_insert_with(HashMap::new);
-                *author_counts.entry(author_id).or_insert(0) += 1;
-            }
-        }
-
-        let mut leaderboard: Vec<(String, u64, usize)> = if let Some(selected_word) = selected_word
-        {
-            word_counts
-                .get(selected_word)
-                .map(|author_counts| {
-                    author_counts
-                        .iter()
-                        .map(|(&author_id, &count)| (selected_word.to_string(), author_id, count))
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            word_counts
-                .into_iter()
-                .map(|(word, author_counts)| {
-                    let (top_author, top_count) = author_counts
-                        .into_iter()
-                        .max_by_key(|&(_, count)| count)
-                        .unwrap();
-                    (word, top_author, top_count)
-                })
-                .collect()
-        };
-
-        leaderboard.sort_by_key(|&(_, _, count)| std::cmp::Reverse(count));
-        leaderboard.truncate(limit);
-
-        let mut description = String::new();
-        const MAX_DESCRIPTION_LENGTH: usize = 4000;
-
-        for (index, (word, author_id, count)) in leaderboard.iter().enumerate() {
-            let entry = format!(
-                "**{}**. `{}`  —  {} uses by <@{}>\n",
-                index + 1,
-                word,
-                count,
-                author_id
-            );
-
-            if description.len() + entry.len() > MAX_DESCRIPTION_LENGTH {
-                description.push_str("...");
-                break;
-            }
-
-            description.push_str(&entry);
-        }
-
-        description = description.trim_end().to_string();
-
-        EditInteractionResponse::new().embed(
-            CreateEmbed::new()
-                .title("Word Usage Leaderboard")
-                .description(format!("**Server:** {}\n\n{}", guild_id, description))
-                .color(0x5865F2)
-                .footer(serenity::all::CreateEmbedFooter::new(format!(
-                    "Showing top {} entries",
-                    leaderboard.len()
-                ))),
+    let leaderboard = match database
+        .get_leaderboard_data(
+            guild_id.get(),
+            member_id,
+            selected_word,
+            min_word_length,
+            excludes_array,
+            limit,
         )
+        .await
+    {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Failed to fetch leaderboard data: {}", e);
+            EditInteractionResponse::new()
+                .content("An error occurred while fetching the leaderboard.");
+            return Ok(());
+        }
     };
+
+    let mut description = String::new();
+
+    for (index, (word, author_id, count)) in leaderboard.iter().enumerate() {
+        let entry = format!(
+            "**{}**. `{}`  -  {} uses by <@{}>\n",
+            index + 1,
+            word,
+            count,
+            author_id
+        );
+
+        if description.len() + entry.len() > MAX_DESCRIPTION_LENGTH {
+            description.push_str("...");
+            break;
+        }
+        description.push_str(&entry);
+    }
+
+    if description.is_empty() {
+        description = "No data found matching your criteria.".to_string();
+    }
+
+    description = description.trim_end().to_string();
+
+    let embed = EditInteractionResponse::new().embed(
+        CreateEmbed::new()
+            .title("Word Usage Leaderboard")
+            .description(format!("**Server:** {}\n\n{}", guild_id, description))
+            .color(0x5865F2)
+            .footer(serenity::all::CreateEmbedFooter::new(format!(
+                "Showing top {} entries",
+                leaderboard.len()
+            ))),
+    );
 
     command.edit_response(&ctx.http, embed).await?;
     Ok(())

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{sqlite::SqlitePool, Row, SqlitePool as Pool};
 
 pub struct Database {
@@ -7,10 +9,7 @@ pub struct Database {
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
         let pool = SqlitePool::connect(database_url).await?;
-
-        // Create tables if they don't exist
         Self::setup_tables(&pool).await?;
-
         Ok(Database { pool })
     }
 
@@ -30,7 +29,26 @@ impl Database {
         .execute(pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS word_counts (
+                guild_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                word TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (guild_id, author_id, word)
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
         // Create indexes for performance
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_word_counts_ranking ON word_counts (guild_id, count DESC)")
+            .execute(pool)
+            .await?;
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_guild_channel ON messages (guild_id, channel_id)")
             .execute(pool)
             .await?;
@@ -64,6 +82,38 @@ impl Database {
         .bind(content)
         .execute(&self.pool)
         .await?;
+
+        let prefix_list = [
+            "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "%", "^", "*", ",",
+        ];
+
+        let mut local_counts: HashMap<String, i32> = HashMap::new();
+
+        for word in content.split_whitespace() {
+            let word_lower = word.to_lowercase();
+
+            if prefix_list.iter().any(|&p| p == word_lower) {
+                continue;
+            }
+            *local_counts.entry(word_lower).or_insert(0) += 1;
+        }
+
+        for (word, count) in local_counts {
+            sqlx::query(
+                r#"
+                INSERT INTO word_counts (guild_id, author_id, word, count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, author_id, word) 
+                DO UPDATE SET count = count + excluded.count
+                "#,
+            )
+            .bind(guild_id as i64)
+            .bind(author_id as i64)
+            .bind(word)
+            .bind(count)
+            .execute(&self.pool)
+            .await?;
+        }
 
         Ok(())
     }
@@ -124,60 +174,60 @@ impl Database {
         }
     }
 
-    pub async fn get_messages_for_leaderboard(
+    pub async fn get_leaderboard_data(
         &self,
         guild_id: u64,
-        member_id: Option<u64>,
-    ) -> Result<Vec<(String, u64)>, sqlx::Error> {
-        let prefix_list: Vec<&str> = vec![
-            "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
-        ];
+        target_user_id: Option<u64>,
+        target_word: Option<&str>,
+        min_length: i64,
+        excludes: Option<Vec<String>>,
+        limit: i64,
+    ) -> Result<Vec<(String, u64, i64)>, sqlx::Error> {
+        let mut sql = String::from(
+            "SELECT word, author_id, count FROM word_counts WHERE guild_id = ? AND LENGTH(word) >= ?"
+        );
 
-        let prefix_conditions = prefix_list
-            .iter()
-            .map(|_| "content NOT LIKE ? || '%'")
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        if target_user_id.is_some() {
+            sql.push_str(" AND author_id = ?");
+        }
+        if target_word.is_some() {
+            sql.push_str(" AND word = ?");
+        }
 
-        let rows = if let Some(member_id) = member_id {
-            let query = format!(
-                "SELECT content, author_id FROM messages WHERE guild_id = ? AND author_id = ? AND {}",
-                prefix_conditions
-            );
-            let mut query_builder = sqlx::query(&query)
-                .bind(guild_id as i64)
-                .bind(member_id as i64);
-
-            for prefix in &prefix_list {
-                query_builder = query_builder.bind(*prefix);
+        if let Some(ref ex) = excludes {
+            if !ex.is_empty() {
+                sql.push_str(" AND word NOT IN (");
+                for (i, _) in ex.iter().enumerate() {
+                    if i > 0 {
+                        sql.push_str(", ");
+                    }
+                    sql.push_str("?");
+                }
+                sql.push(')');
             }
+        }
 
-            query_builder.fetch_all(&self.pool).await?
-        } else {
-            let query = format!(
-                "SELECT content, author_id FROM messages WHERE guild_id = ? AND {}",
-                prefix_conditions
-            );
-            let mut query_builder = sqlx::query(&query).bind(guild_id as i64);
+        let mut query = sqlx::query_as::<_, (String, i64, i64)>(&sql)
+            .bind(guild_id as i64)
+            .bind(min_length);
 
-            for prefix in &prefix_list {
-                query_builder = query_builder.bind(*prefix);
+        if let Some(uid) = target_user_id {
+            query = query.bind(uid as i64);
+        }
+        if let Some(word) = target_word {
+            query = query.bind(word);
+        }
+        if let Some(ex) = excludes {
+            for word in ex {
+                query = query.bind(word);
             }
+        }
 
-            query_builder.fetch_all(&self.pool).await?
-        };
+        query = query.bind(limit);
 
-        let messages: Vec<(String, u64)> = rows
-            .iter()
-            .map(|row| {
-                (
-                    row.get::<String, _>("content"),
-                    row.get::<i64, _>("author_id") as u64,
-                )
-            })
-            .collect();
+        let rows = query.fetch_all(&self.pool).await?;
 
-        Ok(messages)
+        Ok(rows.into_iter().map(|(w, u, c)| (w, u as u64, c)).collect())
     }
 
     pub async fn get_random_message(
