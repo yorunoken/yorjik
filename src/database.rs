@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use sqlx::{sqlite::SqlitePool, Row, SqlitePool as Pool};
 
+use crate::utils::constants::BLACKLISTED_PREFIXES;
+
 pub struct Database {
     pool: Pool,
 }
@@ -113,18 +115,10 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        let prefix_list = [
-            "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "%", "^", "*", ",",
-        ];
-
         let mut local_counts: HashMap<String, i32> = HashMap::new();
 
         for word in content.split_whitespace() {
             let word_lower = word.to_lowercase();
-
-            if prefix_list.iter().any(|&p| p == word_lower) {
-                continue;
-            }
             *local_counts.entry(word_lower).or_insert(0) += 1;
         }
 
@@ -287,11 +281,7 @@ impl Database {
         guild_id: u64,
         min_letters_amount: u64,
     ) -> Result<Option<(String, u64)>, sqlx::Error> {
-        let prefix_list: Vec<&str> = vec![
-            "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
-        ];
-
-        let prefix_conditions = prefix_list
+        let prefix_conditions = BLACKLISTED_PREFIXES
             .iter()
             .map(|_| "content NOT LIKE ? || '%'")
             .collect::<Vec<_>>()
@@ -326,7 +316,7 @@ impl Database {
             .bind(min_id)
             .bind(min_letters_amount as i64);
 
-        for prefix in &prefix_list {
+        for prefix in &BLACKLISTED_PREFIXES {
             query_builder = query_builder.bind(*prefix);
         }
 
