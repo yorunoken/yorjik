@@ -6,6 +6,7 @@ use std::sync::Arc;
 use serenity::all::{ChannelId, Context, GuildId};
 
 use crate::database::Database;
+use crate::utils::constants::BLACKLISTED_PREFIXES;
 use crate::utils::markov_chain;
 use crate::MarkovChainGlobal;
 
@@ -30,15 +31,11 @@ pub async fn generate_markov_message(
         }
     }
 
-    let prefixes = [
-        "$", "&", "!", ".", "m.", ">", "<", "[", "]", "@", "#", "^", "*", ",", "https", "http",
-    ];
-
     let sentences = match database
         .get_messages_for_markov(
             guild_id.get(),
             channel_id.get(),
-            &prefixes,
+            &BLACKLISTED_PREFIXES,
             DATABASE_MESSAGE_FETCH_LIMIT,
         )
         .await
