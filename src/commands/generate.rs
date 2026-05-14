@@ -24,7 +24,7 @@ pub async fn execute(
     let options = &command.data.options;
 
     // let it stay here for now
-    let word = options
+    let _word = options
         .iter()
         .find(|opt| opt.name == "word")
         .and_then(|opt| opt.value.as_str());
