@@ -78,7 +78,6 @@ impl EventHandler for Handler {
 
                                 // Only send a message if builder is not None
                                 if let Some(markov_message) = generate_markov_message(
-                                    &ctx,
                                     guild_id,
                                     channel.id,
                                     None,
@@ -160,7 +159,6 @@ impl EventHandler for Handler {
             let typing = ctx.http.start_typing(msg.channel_id);
 
             let builder = match generate_markov_message(
-                &ctx,
                 guild_id,
                 msg.channel_id,
                 None,
