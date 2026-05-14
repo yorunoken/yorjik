@@ -1,4 +1,3 @@
-pub mod collect;
 pub mod generate;
 pub mod guess;
 pub mod leaderboard;
@@ -42,10 +41,6 @@ pub fn commands_vecs() -> Vec<Command> {
             name: "leaderboard".into(),
             exec: |ctx, command, db| Box::pin(leaderboard::execute(ctx, command, db)),
         },
-        Command {
-            name: "collect".into(),
-            exec: |ctx, command, db| Box::pin(collect::execute(ctx, command, db)),
-        },
     ]
 }
 
@@ -55,6 +50,5 @@ pub fn register_vecs() -> Vec<CreateCommand> {
         generate::register(),
         leaderboard::register(),
         guess::register(),
-        collect::register(),
     ]
 }
