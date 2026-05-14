@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::Arc;
 
 use tokio::time::Duration;
@@ -18,7 +17,6 @@ use serenity::{
 
 use crate::commands::Command;
 use crate::database::Database;
-use crate::utils::helpers::{generate_markov_message, get_most_popular_channel};
 
 pub struct Handler {
     pub commands: Vec<Command>,
@@ -41,17 +39,20 @@ impl EventHandler for Handler {
         // Random message generator on loop
         let mut rng = StdRng::from_entropy();
         let database_clone = self.database.clone();
+
         tokio::spawn(async move {
             loop {
                 // Fetch vector of guilds the bot is in.
-                let guild_ids = ctx.cache.guilds();
+                let guilds = ctx.cache.guilds();
 
                 // Loop over the guild ids
-                for guild_id in guild_ids {
+                for guild in guilds {
                     // Get the channel id of the most popular channel
-                    let popular_channel_id =
-                        get_most_popular_channel(guild_id, database_clone.clone()).await;
-                    let all_channels = ctx.http.get_channels(guild_id).await.unwrap();
+                    let popular_channel_id = database_clone
+                        .get_most_popular_channel(guild.get())
+                        .await
+                        .unwrap_or(0);
+                    let all_channels = ctx.http.get_channels(guild).await.unwrap();
 
                     if let Some(channel_id) = all_channels
                         .iter()
@@ -77,14 +78,9 @@ impl EventHandler for Handler {
                                 }
 
                                 // Only send a message if builder is not None
-                                if let Some(markov_message) = generate_markov_message(
-                                    &ctx,
-                                    guild_id,
-                                    channel.id,
-                                    None,
-                                    database_clone.clone(),
-                                )
-                                .await
+                                if let Some(markov_message) = database_clone
+                                    .generate_random_sentence(guild.get(), channel.id.get())
+                                    .await
                                 {
                                     if !messages_have_bot {
                                         channel
@@ -107,19 +103,6 @@ impl EventHandler for Handler {
                 tokio::time::sleep(Duration::from_secs(range)).await;
             }
         });
-
-        if let Ok(url) = env::var("UPTIME_KUMA_URL") {
-            tokio::spawn(async move {
-                loop {
-                    match reqwest::get(&url).await {
-                        Ok(_) => (),
-                        Err(e) => eprintln!("Failed to ping Kuma: {}", e),
-                    }
-
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                }
-            });
-        }
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
@@ -128,10 +111,12 @@ impl EventHandler for Handler {
             return;
         }
 
-        let guild_id = match msg.guild_id {
+        let guild = match msg.guild_id {
             Some(s) => s,
             _ => return,
         };
+
+        let channel = msg.channel_id;
 
         // write message into database
         if let Err(e) = self
@@ -139,8 +124,8 @@ impl EventHandler for Handler {
             .insert_message(
                 msg.id.get(),
                 msg.author.id.get(),
-                msg.channel_id.get(),
-                guild_id.get(),
+                channel.get(),
+                guild.get(),
                 &msg.content,
             )
             .await
@@ -159,20 +144,16 @@ impl EventHandler for Handler {
         if msg.mentions_me(&ctx.http).await.unwrap_or(false) {
             let typing = ctx.http.start_typing(msg.channel_id);
 
-            let builder = match generate_markov_message(
-                &ctx,
-                guild_id,
-                msg.channel_id,
-                None,
-                self.database.clone(),
-            )
-            .await
+            let builder = match self
+                .database
+                .generate_random_sentence(guild.get(), channel.get())
+                .await
             {
                 Some(markov_message) => CreateMessage::new()
                     .content(markov_message)
                     .reference_message(&msg),
                 None => CreateMessage::new()
-                    .content("Please wait until this channel has over 500 messages.")
+                    .content("There was a problem generating your message.")
                     .reference_message(&msg),
             };
 

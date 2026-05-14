@@ -7,7 +7,6 @@ use serenity::Error;
 use std::sync::Arc;
 
 use crate::database::Database;
-use crate::utils::helpers::generate_markov_message;
 
 pub async fn execute(
     ctx: &Context,
@@ -16,24 +15,29 @@ pub async fn execute(
 ) -> Result<(), Error> {
     command.defer(&ctx.http).await?;
 
-    let guild_id = match command.guild_id {
+    let guild = match command.guild_id {
         Some(s) => s,
         _ => return Ok(()),
     };
+    let channel = command.channel_id;
 
     let options = &command.data.options;
 
-    let word = options
+    // let it stay here for now
+    let _word = options
         .iter()
         .find(|opt| opt.name == "word")
         .and_then(|opt| opt.value.as_str());
 
-    let builder =
-        match generate_markov_message(&ctx, guild_id, command.channel_id, word, database).await {
-            Some(markov_message) => EditInteractionResponse::new().content(markov_message),
-            None => EditInteractionResponse::new()
-                .content("Please wait until this channel has over 500 messages."),
-        };
+    let builder = match database
+        .generate_random_sentence(guild.get(), channel.get())
+        .await
+    {
+        Some(markov_message) => EditInteractionResponse::new().content(markov_message),
+        None => {
+            EditInteractionResponse::new().content("There was a problem generating your message.")
+        }
+    };
 
     command.edit_response(&ctx.http, builder).await?;
     Ok(())
