@@ -16,7 +16,6 @@ impl Database {
     }
 
     async fn setup_tables(pool: &Pool) -> Result<(), sqlx::Error> {
-        // Create messages table
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS messages (
@@ -58,7 +57,33 @@ impl Database {
         .execute(pool)
         .await?;
 
-        // Create indexes for performance
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS markov_transitions (
+                word1 TEXT NOT NULL,
+                word2 TEXT NOT NULL,
+                word3 TEXT NOT NULL,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                weight INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (word1, word2, word3, guild_id, channel_id, author_id)
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS guild_configs (
+                guild_id INTEGER PRIMARY KEY,
+                random_speak_chance REAL NOT NULL DEFAULT 0.01,
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_channel_stats_ranking ON channel_stats (guild_id, count DESC)")
             .execute(pool)
@@ -80,6 +105,10 @@ impl Database {
             .execute(pool)
             .await?;
 
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_markov_lookup ON markov_transitions (guild_id, word1, word2)")
+            .execute(pool)
+            .await?;
+
         Ok(())
     }
 
@@ -91,6 +120,8 @@ impl Database {
         guild_id: u64,
         content: &str,
     ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query(
             "INSERT INTO messages (message_id, author_id, channel_id, guild_id, content) VALUES (?, ?, ?, ?, ?)"
         )
@@ -99,7 +130,7 @@ impl Database {
         .bind(channel_id as i64)
         .bind(guild_id as i64)
         .bind(content)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         sqlx::query(
@@ -112,7 +143,7 @@ impl Database {
         )
         .bind(guild_id as i64)
         .bind(channel_id as i64)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         let mut local_counts: HashMap<String, i32> = HashMap::new();
@@ -135,10 +166,76 @@ impl Database {
             .bind(author_id as i64)
             .bind(word)
             .bind(count)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
 
+        let mut markov_words: Vec<String> = content
+            .split_whitespace()
+            .map(|w| w.to_lowercase())
+            .collect();
+        if !markov_words.is_empty() {
+            markov_words.push("__END__".to_string());
+
+            if markov_words.len() >= 3 {
+                for window in markov_words.windows(3) {
+                    sqlx::query(
+                        r#"
+                        INSERT INTO markov_transitions (word1, word2, word3, guild_id, channel_id, author_id, weight)
+                        VALUES (?, ?, ?, ?, ?, ?, 1)
+                        ON CONFLICT(word1, word2, word3, guild_id, channel_id, author_id) 
+                        DO UPDATE SET weight = weight + 1
+                        "#,
+                    )
+                    .bind(&window[0])
+                    .bind(&window[1])
+                    .bind(&window[2])
+                    .bind(guild_id as i64)
+                    .bind(channel_id as i64)
+                    .bind(author_id as i64)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn get_guild_config(&self, guild_id: u64) -> Result<f64, sqlx::Error> {
+        let row = sqlx::query("SELECT random_speak_chance FROM guild_configs WHERE guild_id = ?")
+            .bind(guild_id as i64)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        match row {
+            Some(r) => {
+                let chance: f64 = r.get("random_speak_chance");
+
+                Ok(chance)
+            }
+            None => Ok(0.01),
+        }
+    }
+
+    pub async fn update_guild_config(
+        &self,
+        guild_id: u64,
+        random_speak_chance: f64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO guild_configs (guild_id, random_speak_chance)
+            VALUES (?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET 
+                random_speak_chance = excluded.random_speak_chance,
+            "#,
+        )
+        .bind(guild_id as i64)
+        .bind(random_speak_chance)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -170,12 +267,12 @@ impl Database {
 
         let query = format!(
             "SELECT content FROM messages 
-             WHERE guild_id = ? 
-             AND channel_id = ? 
-             AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
-             AND LENGTH(content) > 10 
-             AND {} 
-             LIMIT ?",
+                WHERE guild_id = ? 
+                AND channel_id = ? 
+                AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
+                AND LENGTH(content) > 10 
+                AND {} 
+                LIMIT ?",
             prefix_conditions
         );
 
@@ -301,11 +398,11 @@ impl Database {
 
         let query = format!(
             "SELECT content, author_id FROM messages 
-             WHERE guild_id = ? 
-             AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
-             AND LENGTH(content) >= ? 
-             AND {} 
-             LIMIT 1",
+                WHERE guild_id = ? 
+                AND message_id >= (ABS(RANDOM()) % (? - ?) + ?) 
+                AND LENGTH(content) >= ? 
+                AND {} 
+                LIMIT 1",
             prefix_conditions
         );
 
