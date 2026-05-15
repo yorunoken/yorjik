@@ -59,6 +59,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_messages_guild_author ON messages (guild_id, author_id);
             CREATE INDEX IF NOT EXISTS idx_messages_guild ON messages (guild_id);
             CREATE INDEX IF NOT EXISTS idx_markov_lookup ON markov_transitions (guild_id, word1, word2);
+            CREATE INDEX IF NOT EXISTS idx_markov_start ON markov_transitions (guild_id, channel_id, word1);
+            CREATE INDEX IF NOT EXISTS idx_markov_fallback ON markov_transitions (guild_id, word2, word3, weight);
             "#,
         )
         .execute(pool)
