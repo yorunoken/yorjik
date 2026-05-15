@@ -11,38 +11,7 @@ impl Database {
             .collect::<Vec<_>>()
             .join(" AND ");
 
-        let count_query = format!(
-            "SELECT COUNT(*) FROM markov_transitions WHERE guild_id = ? AND channel_id = ? AND {}",
-            prefix_conditions
-        );
-
-        let mut count_builder = sqlx::query_scalar(&count_query)
-            .bind(guild_id as i64)
-            .bind(channel_id as i64);
-
-        for prefix in BLACKLISTED_PREFIXES {
-            count_builder = count_builder.bind(prefix);
-        }
-
-        let total_rows: i64 = match count_builder.fetch_one(&self.pool).await {
-            Ok(count) => count,
-            Err(e) => {
-                eprintln!("Database error counting Markov rows: {}", e);
-                return None;
-            }
-        };
-
-        if total_rows == 0 {
-            return None;
-        }
-
-        let mut rng = StdRng::from_entropy();
-        let random_offset = rng.gen_range(0..total_rows);
-
-        let query = format!(
-            "SELECT word1, word2 FROM markov_transitions WHERE guild_id = ? AND channel_id = ? AND {} LIMIT 1 OFFSET ?",
-            prefix_conditions
-        );
+        let query = format!("SELECT word1, word2 FROM markov_transitions WHERE guild_id = ? AND channel_id = ? AND {} ORDER BY RANDOM() LIMIT 1", prefix_conditions);
 
         let mut query_builder = sqlx::query(&query)
             .bind(guild_id as i64)
@@ -51,7 +20,6 @@ impl Database {
         for prefix in BLACKLISTED_PREFIXES {
             query_builder = query_builder.bind(prefix);
         }
-        query_builder = query_builder.bind(random_offset);
 
         let start_row = match query_builder.fetch_optional(&self.pool).await {
             Ok(row) => row,
