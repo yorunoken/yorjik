@@ -7,7 +7,7 @@ impl Database {
     pub async fn generate_random_sentence(&self, guild_id: u64, channel_id: u64) -> Option<String> {
         let prefix_conditions = BLACKLISTED_PREFIXES
             .iter()
-            .map(|_| "content NOT LIKE ? || '%'")
+            .map(|_| "word1 NOT LIKE ? || '%'")
             .collect::<Vec<_>>()
             .join(" AND ");
 
